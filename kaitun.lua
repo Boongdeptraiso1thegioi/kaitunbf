@@ -1050,7 +1050,7 @@ function hoangtuveu()
     DropShadow.Position = UDim2.new(0.5, 0, 0.5, 0)
     DropShadow.Size = UDim2.new(1, 47, 1, 47)
     DropShadow.ZIndex = 0
-    DropShadow.Image = "rbxassetid://30228209509983"
+    DropShadow.Image = "rbxassetid://140481106580711"
     DropShadow.ImageTransparency = 0.25
     DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
 
@@ -1076,7 +1076,7 @@ function hoangtuveu()
     DropShadow2.BackgroundTransparency = 1
     DropShadow2.Position = UDim2.new(0.5, 0, 0.35, 0)
     DropShadow2.Size = UDim2.new(1, 47, 1, 47)
-    DropShadow2.Image = "rbxassetid://30228209509983"
+    DropShadow2.Image = "rbxassetid://140481106580711"
     DropShadow2.ImageColor3 = Color3.fromRGB(0, 0, 0)
     DropShadow2.ImageTransparency = 0.5
     DropShadow2.ScaleType = Enum.ScaleType.Slice
@@ -1173,7 +1173,7 @@ function hoangtuveu()
     ImageLabel.BackgroundTransparency = 1
     ImageLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
     ImageLabel.Size = UDim2.new(0, 40, 0, 40)
-    ImageLabel.Image = "rbxassetid://30228209509983"
+    ImageLabel.Image = "rbxassetid://140481106580711"
 
     TextButton.Parent = dutdit
     TextButton.BackgroundTransparency = 1
@@ -1305,6 +1305,11 @@ function hoangtuveu()
         while task.wait(Config.PanicMode.CheckInterval) do
             pcall(function()
                 if not Config.PanicMode.Enabled then return end
+                -- [FIXED] Đang đi mua võ/dùng item thì PANIC MODE phải
+                -- nhường: nó huỷ TweenInstance + ép CFrame lên cao mỗi 1s,
+                -- kéo ngược nhân vật xuống dưới → nhân vật đứng yên giữa
+                -- chừng, không bao giờ tới được NPC để mua.
+                if _G.BuyLock then return end
                 local char = LocalPlayer.Character
                 local hum  = char and char:FindFirstChildOfClass("Humanoid")
                 local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -1384,9 +1389,154 @@ function hoangtuveu()
         ScriptStorage.Task[J] = W
         ScriptStorage.Task[J .. '-d'] = os.time()
     end
+    -- ============================================================
+    -- [FIXED - "mua võ / dùng item thì ĐỨNG YÊN mà không mua được"]
+    -- ------------------------------------------------------------
+    -- Nguyên nhân gốc đã xác nhận:
+    --  (a) Proxy Remotes có đoạn tự tween tới NPC khi bắn remote "Buy*",
+    --      nhưng nó dùng `local J = {}` khai báo TRƯỚC, còn BuyMelee()
+    --      lại `table.insert(J, ...)` vào bảng J khác (bảng quest
+    --      `J.CurrentLevel = 2` khai báo SAU) → table.find(J, h) LUÔN
+    --      false → nhánh tới-NPC không bao giờ chạy → remote bắn từ
+    --      chỗ đang đứng → server từ chối → đứng yên, không mua.
+    --  (b) `repeat wait(1) ... until dist < 10` không có timeout → nếu
+    --      tween không tới được thì treo vô hạn (đứng yên 100%).
+    --  (c) GoToTeacher() dùng toạ độ lệch 300-600 studs so với
+    --      GameData.Melees, và thiếu hẳn Sabi + Martial Arts Master.
+    -- Sửa: dùng HF_ResolveTeacherCF (ưu tiên NPC thật trong world) +
+    --      HF_EnsureNearNPC (có timeout, tự đổi Sea nếu kẹt) và ghi
+    --      log vào bảng GLOBAL MeleeBoughtLog — cùng bảng mà proxy đọc.
+    -- ============================================================
+
+    -- key (BuyXxx) -> tên thầy + tên võ trong túi
+    MeleeTeacherById = {
+        BlackLeg       = {npc = "Dark Step Teacher",     item = "Black Leg"},
+        Electro        = {npc = "Mad Scientist",         item = "Electro"},
+        FishmanKarate  = {npc = "Water Kung-fu Teacher", item = "Fishman Karate"},
+        DragonClaw     = {npc = "Sabi",                   item = "Dragon Claw"},
+        Superhuman     = {npc = "Martial Arts Master",   item = "Superhuman"},
+        DeathStep      = {npc = "Phoeyu, the Reformed",  item = "Death Step"},
+        SharkmanKarate = {npc = "Sharkman Teacher",      item = "Sharkman Karate"},
+        ElectricClaw   = {npc = "Previous Hero",         item = "Electric Claw"},
+        DragonTalon    = {npc = "Uzoth",                  item = "Dragon Talon"},
+        Godhuman       = {npc = "Ancient Monk",          item = "Godhuman"},
+    }
+    -- log "đã bắn lệnh mua" — GLOBAL để proxy và BuyMelee dùng CHUNG
+    MeleeBoughtLog = {}
+
+    -- Toạ độ dự phòng khi NPC chưa load (lấy từ GameData.Melees —
+    -- nguồn đã verify trong chính file này — cộng thêm Sea 3)
+    MeleeTeacherFallback = {
+        ["Dark Step Teacher"]     = {[1] = CFrame.new(-1147.284, 4.752, 3816.326), [2] = CFrame.new(-4752.44, 33.92, -4848.04), [3] = CFrame.new(-5045.61, 370.01, -3182.31)},
+        ["Mad Scientist"]         = {[1] = CFrame.new(-4842.112, 717.670, -2623.149), [2] = CFrame.new(-4866.16, 33.92, -4767.11), [3] = CFrame.new(-4996.06, 313.21, -3201.83)},
+        ["Water Kung-fu Teacher"] = {[1] = CFrame.new(61122.652, 18.497, 1568.351), [2] = CFrame.new(-4957.68, 35.94, -4665.6), [3] = CFrame.new(-5023.91, 371.02, -3191.46)},
+        ["Sabi"]                  = {[2] = CFrame.new(699.029, 185.661, 654.895)},
+        ["Martial Arts Master"]   = {[2] = CFrame.new(1377.125, 246.542, -5189.951)},
+        ["Phoeyu, the Reformed"]  = {[2] = CFrame.new(6356.472, 296.100, -6762.771), [3] = CFrame.new(-4999.24, 314.01, -3221.58)},
+        ["Sharkman Teacher"]      = {[2] = CFrame.new(-2599.622, 238.198, -10315.998), [3] = CFrame.new(-4971.21, 313.88, -3223.08)},
+        ["Previous Hero"]         = {[3] = CFrame.new(-10368.514, 331.788, -10134.120)},
+        ["Uzoth"]                 = {[3] = CFrame.new(5661.89, 1210.87, 863.17)},
+        ["Ancient Monk"]          = {[3] = CFrame.new(-13774.1, 333.73, -9879.91)},
+    }
+
+    function HF_ModelCF(inst)
+        if not inst then return nil end
+        if inst:IsA("BasePart") then return inst.CFrame end
+        local p = inst:FindFirstChild("HumanoidRootPart")
+            or (inst:IsA("Model") and inst.PrimaryPart)
+            or inst:FindFirstChild("Head")
+            or inst:FindFirstChild("WorldPivot")
+        if p and p:IsA("BasePart") then return p.CFrame end
+        if p and typeof(p.Value) == "CFrame" then return p.Value end
+        local ok, cf = pcall(function() return inst:GetPivot() end)
+        if ok and typeof(cf) == "CFrame" then return cf end
+        return nil
+    end
+
+    -- Ưu tiên NPC THẬT đang đứng trong world, fallback bảng toạ độ
+    function HF_ResolveTeacherCF(name)
+        if typeof(name) == "CFrame" then return name end
+        if type(name) ~= "string" then return nil end
+        local folders = {
+            workspace:FindFirstChild("NPCs"),
+            game:GetService("ReplicatedStorage"):FindFirstChild("NPCs"),
+            workspace,
+        }
+        for i = 1, 3 do
+            local f = folders[i]
+            if f then
+                local m = f:FindFirstChild(name)
+                if m then
+                    local cf = HF_ModelCF(m)
+                    if cf then return cf end
+                end
+            end
+        end
+        local fb = MeleeTeacherFallback[name]
+        if fb then
+            if fb[SeaIndex] then return fb[SeaIndex] end
+            for i = 1, 5 do if fb[i] then return fb[i] end end
+        end
+        return nil
+    end
+
+    function HF_DistTo(cf)
+        local ch = LocalPlayer and LocalPlayer.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not hrp or not cf then return math.huge end
+        return (cf.Position - hrp.Position).Magnitude
+    end
+
+    -- Đứng sát NPC mới về. CÓ TIMEOUT (chống treo vô hạn = đứng yên),
+    -- khoá tween để CombatController không "cướp" nhân vật, và tự đổi
+    -- Sea nếu bị kẹt (thay vì đứng im chờ tới 60s).
+    function HF_EnsureNearNPC(target, range, timeout)
+        range   = range or 14
+        timeout = timeout or 45
+        local prevPanic = (Config and Config.PanicMode) and Config.PanicMode.Enabled or nil
+        local ok, reached, why = pcall(function()
+            _G.BuyLock = true
+            if Config and Config.PanicMode then Config.PanicMode.Enabled = false end
+            local deadline  = os.time() + timeout
+            local best, lastProgress = math.huge, os.time()
+            while os.time() < deadline do
+                local ch = LocalPlayer and LocalPlayer.Character
+                if not ch or not ch:FindFirstChild("HumanoidRootPart") then
+                    task.wait(0.4)
+                else
+                    local cf = HF_ResolveTeacherCF(target)
+                    if not cf then return false, "khong tim thay NPC" end
+                    _G.BuyTargetCF = cf
+                    local d = HF_DistTo(cf)
+                    if d <= range then return true, d end
+                    if best - d > 60 then best, lastProgress = d, os.time() end
+                    if os.time() - lastProgress > 14 then
+                        lastProgress, best = os.time(), math.huge
+                        local lv = (ScriptStorage and ScriptStorage.PlayerData and ScriptStorage.PlayerData.Level) or 0
+                        if SeaIndex == 1 and lv >= 700 then
+                            pcall(function() Remotes.CommF_:InvokeServer("TravelDressrosa") end)
+                        elseif SeaIndex == 2 and lv >= 1500 then
+                            pcall(function() Remotes.CommF_:InvokeServer("TravelZou") end)
+                        end
+                        task.wait(1)
+                    else
+                        TweenController.Create(cf)
+                        task.wait(0.3)
+                    end
+                end
+            end
+            return false, "het gio"
+        end)
+        _G.BuyLock = false
+        _G.BuyTargetCF = nil
+        if Config and Config.PanicMode and prevPanic ~= nil then
+            Config.PanicMode.Enabled = prevPanic
+        end
+        return (ok and reached) or false, why
+    end
+
     Remotes = {}
     BindedMeleeNPCNames = {BlackLeg = 'Dark Step Teacher', Electro = "Mad Scientist", FishmanKarate = "Water Kung-fu Teacher", DeathStep = "Phoeyu, the Reformed", SharkmanKarate = 'Sharkman Teacher', DragonTalon = "Uzoth", ElectricClaw = 'Previous Hero', Godhuman = "Ancient Monk"}
-    local J = {}
     setmetatable(Remotes, {__index = function(W, W)
         if W ~= 'CommF_' then
             print('captured unregistered signal', key)
@@ -1395,22 +1545,22 @@ function hoangtuveu()
         local W = {InvokeServer = function(a, ...)
             print('remote fired', ...)
             local a, h = ...
-            if string.find(a, "Buy") == 1 and not h then
+            -- [FIXED] đọc bảng GLOBAL MeleeBoughtLog (trước đây đọc `local J`
+            -- khai báo ở scope khác nên luôn false) + timeout + dùng NPC thật
+            if type(a) == "string" and string.find(a, "Buy") == 1 and not h then
                 local h = string.gsub(a, 'Buy', "")
-                if BindedMeleeNPCNames then
-                    if table.find(J, h) then
-                        local a = ScriptStorage.NPCs[BindedMeleeNPCNames[h]]
-                        if a then
-                            local h = a.WorldPivot
-                            if CaculateDistance(h) > 10 then
-                                repeat
-                                    wait(1)
-                                    TweenController.Create(h.Position)
-                                until CaculateDistance(h) < 10
-                                task.wait(3)
-                                Services.ReplicatedStorage.Remotes.CommF_:InvokeServer(...)
-                            end
+                local teacher = BindedMeleeNPCNames[h] or (MeleeTeacherById[h] and MeleeTeacherById[h].npc)
+                if teacher and table.find(MeleeBoughtLog, h) then
+                    -- chỉ đi tới NPC khi thực sự còn xa (BuyMelee thường đã
+                    -- đứng sát sẵn → khỏi tween/cộng delay thừa)
+                    local cf = HF_ResolveTeacherCF(teacher)
+                    if (not cf) or HF_DistTo(cf) > 18 then
+                        local reached, why = HF_EnsureNearNPC(teacher, 14, 45)
+                        if not reached then
+                            print('[BuyFix] khong toi duoc ' .. teacher .. ' (' .. tostring(why) .. ') — huy lenh ' .. tostring(a))
+                            return nil
                         end
+                        task.wait(0.4)
                     end
                 end
             end
@@ -1848,10 +1998,33 @@ end
     end
 
     function BuyMelee(W, a)
+        -- [FIXED - "đứng yên không mua"] Lệnh MUA THẬT (a = nil) bắt buộc
+        -- phải ĐỨNG SÁT NPC, nếu không server từ chối và nhân vật cứ đứng
+        -- yên tại chỗ. Lệnh check (a = true) thì không cần tới NPC.
+        MeleeBuyCooldown = MeleeBuyCooldown or {}
+        if not a then
+            local info = MeleeTeacherById[W]
+            if info then
+                -- chặn spam remote (dispatcher gọi mỗi frame), mỗi võ thử lại
+                -- sau 2.5s nếu lần trước chưa mua được
+                local last = MeleeBuyCooldown[W]
+                if last and (os.time() - last) < 2.5 and not CheckItem(info.item) then
+                    return false
+                end
+                MeleeBuyCooldown[W] = os.time()
+
+                local reached, why = HF_EnsureNearNPC(info.npc, 14, 45)
+                if not reached then
+                    print('[BuyFix] ' .. tostring(W) .. ': khong toi duoc ' .. info.npc .. ' (' .. tostring(why) .. ')')
+                    return false
+                end
+                task.wait(0.4)
+            end
+        end
         if W == "DragonClaw" then
             if workspace.NPCs:FindFirstChild('Sabi') then
                 if a then
-                    if type(Remotes.CommF_:InvokeServer("BlackbeardReward", 'DragonClaw', '1') == 1) == "number" and Remotes.CommF_:InvokeServer('BlackbeardReward', 'DragonClaw', '1') == 1 == 1 and not table.find(J, W) then table.insert(J, W) end
+                    if not table.find(MeleeBoughtLog, W) then table.insert(MeleeBoughtLog, W) end
                     return Remotes.CommF_:InvokeServer("BlackbeardReward", "DragonClaw", "1")
                 end
                 return Remotes.CommF_:InvokeServer('BlackbeardReward', "DragonClaw", '2')
@@ -1863,16 +2036,24 @@ end
             -- y hệt pattern Dragon Talon đã verify trước đó.
             Remotes.CommF_:InvokeServer("BuyGodhuman", true)
             local result = Remotes.CommF_:InvokeServer("BuyGodhuman")
-            if not table.find(J, W) then table.insert(J, W) end
+            if not table.find(MeleeBoughtLog, W) then table.insert(MeleeBoughtLog, W) end
+            print('[BuyFix] BuyGodhuman resp=' .. tostring(result))
             return result
         end
         if a then
             local a = Remotes.CommF_:InvokeServer('Buy' .. W, true)
             print("Response_", a == 1, typeof(a))
-            if type(a) == 'number' and not table.find(J, W) then table.insert(J, W) end
+            if type(a) == 'number' and not table.find(MeleeBoughtLog, W) then table.insert(MeleeBoughtLog, W) end
             return a == 1
         end
-        return Remotes.CommF_:InvokeServer("Buy" .. W)
+        -- [NEW] log kết quả để dễ debug "mua không được" (thiếu tiền / sai chỗ / đủ số tiền chưa)
+        local resp = Remotes.CommF_:InvokeServer("Buy" .. W)
+        local info = MeleeTeacherById[W]
+        local owned = (info and CheckItem(info.item)) and true or false
+        print('[BuyFix] BUY ' .. tostring(W) .. ' resp=' .. tostring(resp) ..
+              (info and ('  | da co ' .. info.item .. ': ' .. tostring(owned)) or ''))
+        if not table.find(MeleeBoughtLog, W) then table.insert(MeleeBoughtLog, W) end
+        return resp
     end
 
     function SendKey(J, W)
@@ -2148,6 +2329,14 @@ end
     -- ============================================================
     function TweenController.Create(W)
         if not W or TweenDebounce then return end
+        -- [FIXED] Đang trong quy trình mua võ/dùng item (_G.BuyLock) thì mọi
+        -- tween từ hệ thống khác (CombatController.Attack chạy vòng
+        -- while task.wait() tới quái MỖI frame) bị ép về đích NPC — nếu
+        -- không, 2 tween giật tục mỗi frame khiến nhân vật đứng yên tại
+        -- chỗ (tổng độ dời ≈ 0) và không bao giờ tới NPC để mua.
+        if _G.BuyLock and _G.BuyTargetCF then
+            W = _G.BuyTargetCF
+        end
         local a = typeof(W) ~= 'CFrame' and ConvertTo(CFrame, W) or W
         if TweenInstance then pcall(function() TweenInstance:Cancel() end) end
         local character = game.Players.LocalPlayer.Character
@@ -2436,7 +2625,32 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
         -- toạ độ của nó ảo nên nhân vật bay thẳng lên trời. Trả nil để đi bãi quái.
         return nil
     end
+    -- [FIXED - "đứng yên không mua"] Bọc Attack để:
+    --  (1) không tạo 2 vòng Attack chồng nhau trên cùng mục tiêu — đây là
+    --      nguyên nhân chính khiến nhân vật đứng yên: dispatcher gọi
+    --      Start() mỗi frame, mỗi lần lại vào Attack() (vốn có vòng
+    --      while task.wait() bên trong) → 2 hệ tween tranh nhau mỗi frame.
+    --  (2) không đánh giữa lúc đang đi mua võ (_G.BuyLock).
+    -- Thân gốc được đổi tên thành CombatController._Attack.
     function CombatController.Attack(h, X, w, D)
+        if _G.BuyLock then return end
+        local _atkKey
+        if type(h) == "table" then
+            local _tmp = {}
+            for i = 1, #h do _tmp[i] = tostring(h[i]) end
+            _atkKey = table.concat(_tmp, "|")
+        else
+            _atkKey = tostring(h)
+        end
+        _AttackRunning = _AttackRunning or {}
+        if _AttackRunning[_atkKey] then return end -- đang đánh mục tiêu này rồi
+        _AttackRunning[_atkKey] = true
+        local _ok, _err = pcall(CombatController._Attack, h, X, w, D)
+        _AttackRunning[_atkKey] = nil
+        if not _ok then print('[Error] CombatController.Attack:', _err) end
+    end
+
+    function CombatController._Attack(h, X, w, D)
         if ScriptStorage.Tools["Sweet Chalice"] and getsenv(game.ReplicatedStorage.GuideModule)["_G"]['InCombat'] then
             pcall(function() if TweenInstance then TweenInstance:Cancel() end end) -- [FIXED] không tween về (0,0,0) khi Sweet Chalice InCombat
             return
@@ -2473,13 +2687,24 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                         if MonResult.Name == "Don Swan" then Storage:Set("SwanDefeated", true) end
                         break
                     end
-                    -- Giữ một điểm cố định phía trên quái, không bay vòng quanh mục tiêu.
+                    -- Giữ một điểm cố định trên mặt đất gần quái, KHÔNG bay lên trời.
                     PosMon = p.CFrame
                     Mon = MonResult.Name
                     getgenv().BringMonster = Config.BringMobs ~= false
                     if not MonResult:IsDescendantOf(workspace) or p.Position.Y > 20000 or p.Position.Y < -5000 then break end -- [FIXED] chống bay lên trời
-                    local stableAttackCF = CFrame.new(p.Position + Vector3.new(0, 25, 0))
-                    TweenController.Create(stableAttackCF)
+                    
+                    -- [FIX] Đứng yên trên mặt đất khi farm quái - KHÔNG bay lên trên quái
+                    local distToMob = CaculateDistance(p.CFrame)
+                    if distToMob < 150 then
+                        -- Đã gần quái -> đứng yên trên mặt đất, KHÔNG tween
+                        local groundCF = CFrame.new(p.Position.X, p.Position.Y, p.Position.Z)
+                        hrp.CFrame = groundCF
+                        block.CFrame = groundCF
+                    else
+                        -- Chưa gần quái -> tween tới vị trí trên mặt đất gần quái (Y = 0)
+                        local stableAttackCF = CFrame.new(p.Position.X, p.Position.Y, p.Position.Z)
+                        TweenController.Create(stableAttackCF)
+                    end
                     if CaculateDistance(stableAttackCF) < 150 then
                         y = D and D()
                         CombatController.Grab(L or '')
@@ -2505,7 +2730,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                             end
                         end
                         if (FarmFruitMastery or math.huge) - os.time() < 3 and math.floor(MonResult.Humanoid.Health / MonResult.Humanoid.MaxHealth * 100) < 30 and not FunctionsHandler.RaidController.Methods.GetCurrentRaidIsland:Call() then
-                            TweenController.Create((p.CFrame) + Vector3.new(0, 25, 0))
+                            -- [FIX] Tween tới mặt đất, không bay lên trời
+                            local groundCF = CFrame.new(p.Position.X, p.Position.Y, p.Position.Z)
+                            TweenController.Create(groundCF)
                             FunctionsHandler.LocalPlayerController.Methods.EquipTool:Call('Blox Fruit')
                             LockAimPositionTo(MonResult.HumanoidRootPart.CFrame.p)
                             local D = {'Z', 'X', "C", 'V'}
@@ -2550,8 +2777,10 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 if not h[CombatController.CurrentIndex] then CombatController.CurrentIndex = 1 end
                 X = h[CombatController.CurrentIndex]
                 local h = os.time()
-                TweenController.Create(X + Vector3.new(0, 35, 35))
-                if CaculateDistance(X + Vector3.new(0, 35, 35)) < 15 then CombatController.CurrentIndex = CombatController.CurrentIndex + 1 end
+                -- [FIX] Tween tới mặt đất, không bay lên trời
+                local groundCF = CFrame.new(X.X, X.Y, X.Z)
+                TweenController.Create(groundCF)
+                if CaculateDistance(groundCF) < 15 then CombatController.CurrentIndex = CombatController.CurrentIndex + 1 end
             end
         end
     end
@@ -2758,6 +2987,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
 
         -- Sea nào không có tên trong bảng = thầy đó không đứng ở Sea đó,
         -- phải qua Sea khác (Sea 3 có đủ cả 8 thầy nên dùng làm fallback)
+        -- [FIXED] Bổ sung SABI (Dragon Claw) + MARTIAL ARTS MASTER
+        -- (Superhuman) — trước đây thiếu 2 thầy này nên GoToTeacher trả
+        -- true ngay lập tức → mua ở chỗ đang đứng, không ai bán cho.
         local TeacherLocations = {
             ["Water Kung-fu Teacher"] = {
                 [1] = CFrame.new(61586.96, 19.58, 987.59),
@@ -2770,7 +3002,7 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 [3] = CFrame.new(-4996.06, 313.21, -3201.83),
             },
             ["Dark Step Teacher"] = {
-                [1] = CFrame.new(-983.62, 12.44, 3990.46),
+                [1] = CFrame.new(-1147.284, 4.752, 3816.326),
                 [2] = CFrame.new(-4752.44, 33.92, -4848.04),
                 [3] = CFrame.new(-5045.61, 370.01, -3182.31),
             },
@@ -2782,6 +3014,12 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 [2] = CFrame.new(-2599.63, 238.19, -10316),
                 [3] = CFrame.new(-4971.21, 313.88, -3223.08),
             },
+            ["Sabi"] = {
+                [2] = CFrame.new(699.029, 185.661, 654.895),
+            },
+            ["Martial Arts Master"] = {
+                [2] = CFrame.new(1377.125, 246.542, -5189.951),
+            },
             ["Previous Hero"] = {
                 [3] = CFrame.new(-10371.48, 330.76, -10131.42),
             },
@@ -2792,13 +3030,20 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 [3] = CFrame.new(-13774.1, 333.73, -9879.91),
             },
         }
+        -- [FIXED] đồng bộ bảng local này vào bảng GLOBAL MeleeTeacherFallback
+        -- (bảng mà HF_ResolveTeacherCF thực sự dùng) để không có 2 nguồn
+        -- toạ độ cùng lúc.
+        for _tName, _tLocs in pairs(TeacherLocations) do
+            MeleeTeacherFallback[_tName] = MeleeTeacherFallback[_tName] or _tLocs
+        end
+
         -- [NEW] Melee nào → thầy nào (khớp với tên trong MeleePrices.Buy)
-        -- Dragon Claw ("Sabi") và Superhuman ("Martial Arts Master") KHÔNG
-        -- có trong data boss man cho — để trống, không bịa toạ độ
         local MeleeTeacher = {
             ["Fishman Karate"]   = "Water Kung-fu Teacher",
             ["Electro"]          = "Mad Scientist",
             ["Black Leg"]        = "Dark Step Teacher",
+            ["Dragon Claw"]      = "Sabi",
+            ["Superhuman"]       = "Martial Arts Master",
             ["Death Step"]       = "Phoeyu, the Reformed",
             ["Sharkman Karate"]  = "Sharkman Teacher",
             ["Electric Claw"]    = "Previous Hero",
@@ -2806,30 +3051,16 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
             ["Godhuman"]         = "Ancient Monk",
         }
 
-        -- [NEW] Tween tới đúng thầy trước khi mua — đây là phần BỊ THIẾU
-        -- khiến "mua bị lỗi" (gọi remote mua nhưng nhân vật không đứng gần
-        -- NPC nên server từ chối). Sea hiện tại có thầy → dùng luôn; không
-        -- có → qua Sea 3 (thầy nào cũng có mặt ở đó).
+        -- [FIXED] Đi tới thầy TRƯỚC khi mua — phần BỊ THIẾU khiến "mua bị
+        -- lỗi" (bắn remote mua nhưng nhân vật không đứng gần NPC nên server
+        -- từ chối). Ưu tiên vị trí NPC THẬT trong world (HF_ResolveTeacherCF),
+        -- fallback bảng TeacherLocations. Dùng EnsureNear có timeout nên
+        -- không bao giờ đứng yên vô hạn.
         local function GoToTeacher(meleeName)
             local teacher = MeleeTeacher[meleeName]
             if not teacher then return true end -- không có data vị trí, bỏ qua bước này
-            local locs = TeacherLocations[teacher]
-            if not locs then return true end
-
-            local cf = locs[SeaIndex]
-            if not cf then
-                if SeaIndex ~= 3 then
-                    Remotes.CommF_:InvokeServer("TravelZou")
-                    return false
-                end
-                return true -- đang ở Sea 3 mà bảng thiếu toạ độ Sea 3 (không nên xảy ra)
-            end
-
-            if CaculateDistance(cf) > 10 then
-                TweenController.Create(cf)
-                return false
-            end
-            return true
+            local reached = HF_EnsureNearNPC(teacher, 14, 45)
+            return reached
         end
 
         for _, melee in ipairs(meleeList) do
@@ -3668,7 +3899,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 local spawnFolder = game.ReplicatedStorage:FindFirstChild("FortBuilderReplicatedSpawnPositionsFolder")
                 local n = spawnFolder and spawnFolder:FindFirstChild("Shanda")
                 if n then
-                    TweenController.Create(n:GetPivot() + Vector3.new(0, 25, 0))
+                    -- [FIX] Tween tới mặt đất, không bay lên trời
+                    local groundCF = CFrame.new(n:GetPivot().Position.X, n:GetPivot().Position.Y, n:GetPivot().Position.Z)
+                    TweenController.Create(groundCF)
                 else
                     TweenController.Create(CFrame.new(-7783, 5576, -519))
                 end
@@ -3708,7 +3941,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                 local spawnFolder = game.ReplicatedStorage:FindFirstChild("FortBuilderReplicatedSpawnPositionsFolder")
                 local n = spawnFolder and spawnFolder:FindFirstChild("God's Guard")
                 if n then
-                    TweenController.Create(n:GetPivot() + Vector3.new(0, 25, 0))
+                    -- [FIX] Tween tới mặt đất, không bay lên trời
+                    local groundCF = CFrame.new(n:GetPivot().Position.X, n:GetPivot().Position.Y, n:GetPivot().Position.Z)
+                    TweenController.Create(groundCF)
                 end
             end
 
@@ -4063,7 +4298,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
         local hrp = live:FindFirstChild("HumanoidRootPart")
         if hum and hrp and hum.Health > 0 then
             SetTask("MainTask", "Race Awakening | Fighting " .. bossName)
-            TweenController.Create(hrp.CFrame + Vector3.new(0, 30, 0))
+            -- [FIX] Tween tới mặt đất gần boss, không bay lên trời
+                    local groundCF = CFrame.new(hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
+                    TweenController.Create(groundCF)
             if not LocalPlayer.Character:FindFirstChild("HasBuso") then
                 pcall(function() Remotes.CommF_:InvokeServer("Buso") end)
             end
@@ -4422,7 +4659,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
 
         SetTask("MainTask", "Sword Boss | Đánh " .. sw.boss .. " lấy " .. sw.sword)
         if boss:FindFirstChild("HumanoidRootPart") then
-            TweenController.Create(boss.HumanoidRootPart.CFrame + Vector3.new(0, 30, 0))
+            -- [FIX] Tween tới mặt đất gần boss, không bay lên trời
+                    local groundCF = CFrame.new(boss.HumanoidRootPart.Position.X, boss.HumanoidRootPart.Position.Y, boss.HumanoidRootPart.Position.Z)
+                    TweenController.Create(groundCF)
         end
         CombatController.Attack(sw.boss)
 
@@ -4531,7 +4770,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
             local boss = enemies:FindFirstChild("Cake Prince")
             if boss and boss:FindFirstChild("Humanoid") and boss.Humanoid.Health > 0 then
                 SetTask("MainTask", "Cake Mastery | " .. trainingName .. " (" .. mastery .. "/" .. (target or 500) .. ") | Cake Prince HP " .. math.floor(boss.Humanoid.Health / boss.Humanoid.MaxHealth * 100) .. "%")
-                TweenController.Create(boss.HumanoidRootPart.CFrame + Vector3.new(0, 30, 0))
+                -- [FIX] Tween tới mặt đất gần boss, không bay lên trời
+                    local groundCF = CFrame.new(boss.HumanoidRootPart.Position.X, boss.HumanoidRootPart.Position.Y, boss.HumanoidRootPart.Position.Z)
+                    TweenController.Create(groundCF)
                 CombatController.Attack("Cake Prince")
 
                 -- [ADDED] Hạ xong → reset về farm bình thường, giống pattern
@@ -5532,7 +5773,10 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
 
             if #zombies < 6 then
                 SetTask('MainTask', 'Soul Guitar: Waiting Living Zombies (' .. #zombies .. '/6)')
-                TweenController.Create(ScriptStorage.MobRegions["Living Zombie"][1] + Vector3.new(0, 30, 0))
+                -- [FIX] Tween tới mặt đất, không bay lên trời
+                local spawnPos = ScriptStorage.MobRegions["Living Zombie"][1]
+                local groundCF = CFrame.new(spawnPos.X, spawnPos.Y, spawnPos.Z)
+                TweenController.Create(groundCF)
             else
                 local startT = os.time()
                 for idx, zombie in ipairs(zombies) do
@@ -5543,7 +5787,9 @@ function W.Attack(target) pcall(function() _G.FastAttack = os.time() end) end
                         SetTask('MainTask', 'Soul Guitar: Weakening zombie ' .. idx .. '/' .. #zombies)
                         FunctionsHandler.LocalPlayerController.Methods.EquipTool:Call('Melee')
                         if os.time() - startT > 60 then _SgHopServer() return end
-                        TweenController.Create(root.CFrame + Vector3.new(0, 50, 0))
+                        -- [FIX] Tween tới mặt đất gần zombie, không bay lên trời
+                        local groundCF = CFrame.new(root.Position.X, root.Position.Y, root.Position.Z)
+                        TweenController.Create(groundCF)
                         pcall(function() _G.FastAttack = os.time() end)
                     end
                 end
