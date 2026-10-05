@@ -12222,4 +12222,4 @@ for _, child in pairs(workspace._WorldOrigin.PlayerSpawns.Pirates:GetChildren())
 	tbl26[child.Name] = 0
 end
 
-error("devirt: value <luasym.LuaFunc object at 0x00000187FD1A2950> in an expression (at 7:270)")
+
